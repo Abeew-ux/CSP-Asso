@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accueil | CSP ASSO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+
+    <div id="app-header"></div>
+
+    <section class="bg-gradient-to-r from-blue-900 to-blue-700 text-white py-20 px-4 text-center">
+        <div class="max-w-3xl mx-auto">
+            <h1 class="text-4xl md:text-5xl font-extrabold mb-6 leading-tight">Bienvenue au Complexe Scolaire Privé <span class="text-yellow-400">CSP ASSO</span></h1>
+            <p class="text-lg md:text-xl text-blue-100 mb-8">Formons ensemble l'élite de demain. Retrouvez ici toutes les informations, vos bulletins, et effectuez vos inscriptions en toute simplicité.</p>
+            <div class="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+                <a href="inscription.html" class="bg-yellow-500 hover:bg-yellow-400 text-blue-950 font-bold px-8 py-3 rounded-lg shadow-lg transition">S'inscrire en ligne</a>
+                <a href="login.html" class="bg-transparent border-2 border-white hover:bg-white hover:text-blue-900 font-bold px-8 py-3 rounded-lg transition">Consulter ses notes</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="py-12 max-w-7xl mx-auto px-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-600 text-center">
+                <div class="text-blue-600 text-4xl mb-4"><i class="fa-solid fa-file-pen"></i></div>
+                <h3 class="text-xl font-bold mb-2">Inscriptions Ouvertes</h3>
+                <p class="text-gray-600 mb-4">Inscrivez vos enfants ou vous-même directement en quelques clics via notre formulaire sécurisé.</p>
+                <a href="inscription.html" class="text-blue-600 font-semibold hover:underline">Accéder au formulaire &rarr;</a>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-yellow-500 text-center">
+                <div class="text-yellow-500 text-4xl mb-4"><i class="fa-solid fa-chart-line"></i></div>
+                <h3 class="text-xl font-bold mb-2">Notes & Bulletins</h3>
+                <p class="text-gray-600 mb-4">Un espace sécurisé pour les élèves et les parents afin de suivre les notes et les relevés trimestriels.</p>
+                <a href="login.html" class="text-blue-600 font-semibold hover:underline">Se connecter &rarr;</a>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-900 text-center">
+                <div class="text-blue-900 text-4xl mb-4"><i class="fa-solid fa-bullhorn"></i></div>
+                <h3 class="text-xl font-bold mb-2">Actualités & Annonces</h3>
+                <p class="text-gray-600 mb-4">Restez informés des communiqués officiels, des dates d'examens et des événements de l'école.</p>
+                <a href="#actualites" class="text-blue-600 font-semibold hover:underline">Voir les actus &rarr;</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Actualités : lues depuis Supabase, publiées via le bot Telegram -->
+    <section id="actualites" class="bg-gray-100 py-12 px-4">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-8 text-blue-900">Dernières Actualités</h2>
+            <div id="actus" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <p class="text-center text-gray-500 md:col-span-2">Chargement…</p>
+            </div>
+        </div>
+    </section>
+
+    <div id="app-footer"></div>
+
+    <script>
+        // Clé publique (anon) : sans danger dans le navigateur, les données privées sont protégées par RLS.
+        const SUPABASE_URL = 'https://vgnxmwwvdgyqmthoovwf.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_rbIdP1IyapQaA6vm73HeIQ_2vMM6VZ6';
+
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+        async function chargerActus() {
+            const box = document.getElementById('actus');
+            try {
+                const r = await fetch(
+                    `${SUPABASE_URL}/rest/v1/actualites?select=titre,categorie,contenu,created_at&order=created_at.desc&limit=6`,
+                    { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+                );
+                if (!r.ok) throw new Error(r.status);
+                const actus = await r.json();
+                if (!actus.length) {
+                    box.innerHTML = '<p class="text-center text-gray-500 md:col-span-2">Aucune actualité pour le moment.</p>';
+                    return;
+                }
+                box.innerHTML = actus.map((a) => `
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <span class="text-xs bg-blue-100 text-blue-800 font-semibold px-2.5 py-0.5 rounded">${esc(a.categorie)}</span>
+                        <h3 class="text-xl font-bold mt-2 mb-2">${esc(a.titre)}</h3>
+                        <p class="text-gray-600 whitespace-pre-line">${esc(a.contenu)}</p>
+                        <span class="text-xs text-gray-400 mt-4 block">${new Date(a.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                    </div>`).join('');
+            } catch (e) {
+                box.innerHTML = '<p class="text-center text-gray-500 md:col-span-2">Impossible de charger les actualités pour le moment.</p>';
+            }
+        }
+        chargerActus();
+    </script>
+    <script src="layout.js"></script>
+</body>
+</html>
