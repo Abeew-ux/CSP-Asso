@@ -316,8 +316,8 @@ const HELP = `Commandes :
   clés : apropos, formations (une par ligne, « Titre : description »), adresse, telephone, email, horaires
 /inscriptions : voir les nouvelles demandes d'inscription
 /eleve matricule | nom | prénom | classe : créer un élève
-/import_eleves : envoyer un fichier Excel/CSV avec cette légende
-/import_notes T1 : fichier Excel/CSV de notes, avec cette légende
+/import_eleves : envoyer un fichier Excel/CSV dont le nom contient « eleves » (import automatique), ou répondre au fichier avec /import_eleves
+/import_notes T1 : fichier de notes dont le nom contient « notes » et T1 (ex. notes_T1.xlsx), ou répondre au fichier avec /import_notes T1
 /note matricule | matière | trimestre | note
 /reset matricule : nouveau code de connexion
 Bulletins : envoie les PDF nommés MATRICULE_T1.pdf`;
@@ -341,11 +341,17 @@ export default async function handler(req, res) {
     const [rawCmd, ...rest] = text.split(/\s+/);
     const cmd = rawCmd.split('@')[0].toLowerCase();
     const args = text.slice(rawCmd.length).trim();
-    const doc = msg.document;
+    // le fichier peut être dans le message, ou dans le message auquel on répond avec la commande
+    const isImportCmd = cmd === '/import_eleves' || cmd === '/import_notes';
+    const doc = msg.document || (isImportCmd ? msg.reply_to_message?.document : null);
+    const nomFichier = doc?.file_name || '';
 
     if (doc && /^(.+)_(T[1-3])\.pdf$/i.test(doc.file_name || '')) await handleBulletinPdf(chatId, doc);
+    else if (isImportCmd && !doc) await send(chatId, "Envoie d'abord le fichier Excel, puis réponds à ce fichier avec " + cmd + (cmd === '/import_notes' ? ' T1' : '') + ' (appui long sur le fichier, puis Répondre).');
     else if (doc && cmd === '/import_eleves') await cmdImportEleves(chatId, doc);
     else if (doc && cmd === '/import_notes') await cmdImportNotes(chatId, rest[0], doc);
+    else if (doc && !cmd && /eleve/i.test(nomFichier)) await cmdImportEleves(chatId, doc);
+    else if (doc && !cmd && /note/i.test(nomFichier) && /T[1-3]/i.test(nomFichier)) await cmdImportNotes(chatId, /T[1-3]/i.exec(nomFichier)[0].toUpperCase(), doc);
     else if (doc) await send(chatId, 'Ajoute une légende : /import_eleves, /import_notes T1, ou nomme le PDF MATRICULE_T1.pdf');
     else if (cmd === '/start' || cmd === '/aide' || cmd === '/help') await send(chatId, HELP);
     else if (cmd === '/actu') await cmdActu(chatId, args);
@@ -363,4 +369,5 @@ export default async function handler(req, res) {
     await send(chatId, `Erreur : ${e.message}`);
   }
   res.status(200).send('ok');
-}
+                                       }
+                   
