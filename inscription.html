@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inscription | CSP ASSO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+    <div id="app-header"></div>
+    <main class="max-w-2xl mx-auto px-4 py-10">
+        <h1 class="text-3xl font-bold text-blue-900 mb-2">Inscription en ligne</h1>
+        <p class="text-gray-600 mb-6">Remplis ce formulaire : l'administration te recontactera pour finaliser le dossier.</p>
+
+        <form id="form" class="bg-white p-6 rounded-xl shadow-md border-t-4 border-yellow-500 space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div><label class="block text-sm font-medium mb-1" for="prenom_eleve">Prénom de l'élève *</label>
+                    <input id="prenom_eleve" required maxlength="80" class="w-full border rounded-lg px-3 py-2"></div>
+                <div><label class="block text-sm font-medium mb-1" for="nom_eleve">Nom de l'élève *</label>
+                    <input id="nom_eleve" required maxlength="80" class="w-full border rounded-lg px-3 py-2"></div>
+                <div><label class="block text-sm font-medium mb-1" for="date_naissance">Date de naissance</label>
+                    <input id="date_naissance" type="date" class="w-full border rounded-lg px-3 py-2"></div>
+                <div><label class="block text-sm font-medium mb-1" for="classe_souhaitee">Classe souhaitée *</label>
+                    <input id="classe_souhaitee" required maxlength="80" placeholder="ex. 6e, 3e, Seconde" class="w-full border rounded-lg px-3 py-2"></div>
+            </div>
+            <hr>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div><label class="block text-sm font-medium mb-1" for="nom_parent">Nom du parent / tuteur *</label>
+                    <input id="nom_parent" required maxlength="120" class="w-full border rounded-lg px-3 py-2"></div>
+                <div><label class="block text-sm font-medium mb-1" for="telephone">Téléphone *</label>
+                    <input id="telephone" type="tel" required minlength="6" maxlength="30" class="w-full border rounded-lg px-3 py-2"></div>
+            </div>
+            <div><label class="block text-sm font-medium mb-1" for="email">E-mail (facultatif)</label>
+                <input id="email" type="email" maxlength="120" class="w-full border rounded-lg px-3 py-2"></div>
+            <div><label class="block text-sm font-medium mb-1" for="message">Message (facultatif)</label>
+                <textarea id="message" rows="3" maxlength="1000" class="w-full border rounded-lg px-3 py-2"></textarea></div>
+            <input id="site_web" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true">
+            <p id="retour" class="hidden text-sm"></p>
+            <button id="envoyer" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-lg transition">Envoyer la demande</button>
+        </form>
+    </main>
+    <div id="app-footer"></div>
+    <script src="layout.js"></script>
+    <script>
+        const champs = ['prenom_eleve', 'nom_eleve', 'date_naissance', 'classe_souhaitee', 'nom_parent', 'telephone', 'email', 'message'];
+        const retour = (msg, ok) => {
+            const p = document.getElementById('retour');
+            p.textContent = msg; p.className = 'text-sm ' + (ok ? 'text-green-700' : 'text-red-600');
+        };
+        document.getElementById('form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (document.getElementById('site_web').value) return; // anti-robot
+            const body = {};
+            champs.forEach((c) => { const v = document.getElementById(c).value.trim(); if (v) body[c] = v; });
+            const btn = document.getElementById('envoyer');
+            btn.disabled = true;
+            try {
+                const r = await fetch(`${CSP.URL_API}/rest/v1/inscriptions`, {
+                    method: 'POST',
+                    headers: { apikey: CSP.KEY, Authorization: `Bearer ${CSP.KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+                    body: JSON.stringify(body),
+                });
+                if (!r.ok) throw new Error();
+                document.getElementById('form').reset();
+                retour("Demande envoyée. Nous te recontactons très bientôt.", true);
+            } catch (err) {
+                retour("L'envoi a échoué. Vérifie les champs et réessaie.", false);
+            } finally { btn.disabled = false; }
+        });
+    </script>
+</body>
+</html>
