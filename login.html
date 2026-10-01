@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Espace Notes | CSP ASSO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+
+    <header class="bg-blue-900 text-white shadow-md">
+        <div class="max-w-3xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="index.html" class="flex items-center space-x-2 font-extrabold tracking-wide">
+                <i class="fa-solid fa-graduation-cap"></i><span>CSP ASSO</span>
+            </a>
+            <button id="btn-logout" class="hidden text-sm bg-blue-700 hover:bg-blue-600 px-3 py-1.5 rounded-lg">
+                <i class="fa-solid fa-right-from-bracket mr-1"></i>Déconnexion
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-4 py-8">
+
+        <!-- Connexion -->
+        <section id="vue-login" class="max-w-sm mx-auto bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-600">
+            <h1 class="text-2xl font-bold text-blue-900 mb-1 text-center">Espace Notes</h1>
+            <p class="text-sm text-gray-500 mb-5 text-center">Connecte-toi avec ton matricule et ton code personnel.</p>
+            <div class="space-y-4">
+                <div>
+                    <label for="matricule" class="block text-sm font-medium mb-1">Matricule</label>
+                    <input id="matricule" type="text" autocomplete="username" autocapitalize="characters"
+                        class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label for="code" class="block text-sm font-medium mb-1">Code</label>
+                    <input id="code" type="password" autocomplete="current-password"
+                        class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <p id="erreur" class="hidden text-sm text-red-600"></p>
+                <button id="btn-login" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-lg transition">Se connecter</button>
+                <p class="text-xs text-gray-400 text-center">Code perdu ? Demande-en un nouveau à l'administration.</p>
+            </div>
+        </section>
+
+        <!-- Notes & bulletins -->
+        <section id="vue-notes" class="hidden">
+            <div class="bg-white p-5 rounded-xl shadow-md border-t-4 border-yellow-500 mb-6">
+                <h1 id="nom-eleve" class="text-2xl font-bold text-blue-900"></h1>
+                <p id="classe-eleve" class="text-gray-500"></p>
+            </div>
+            <div id="trimestres" class="space-y-6"></div>
+        </section>
+    </main>
+
+    <script>
+        // Clé publique : sans danger ici. Chaque élève ne peut lire que ses propres lignes (RLS côté base).
+        const URL_API = 'https://vgnxmwwvdgyqmthoovwf.supabase.co';
+        const KEY = 'sb_publishable_rbIdP1IyapQaA6vm73HeIQ_2vMM6VZ6';
+
+        const $ = (id) => document.getElementById(id);
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const fmt = (n) => Number(n).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+
+        let token = null;
+
+        const headers = () => ({ apikey: KEY, Authorization: `Bearer ${token || KEY}` });
+
+        function saveToken(t) { try { t ? sessionStorage.setItem('csp_token', t) : sessionStorage.removeItem('csp_token'); } catch (e) {} }
+        function loadToken() { try { return sessionStorage.getItem('csp_token'); } catch (e) { return null; } }
+
+        function montrerErreur(msg) { const e = $('erreur'); e.textContent = msg; e.classList.remove('hidden'); }
+
+        async function connexion() {
+            const matricule = $('matricule').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+            const code = $('code').value;
+            $('erreur').classList.add('hidden');
+            if (!matricule || !code) return montrerErreur('Renseigne ton matricule et ton code.');
+            $('btn-login').disabled = true;
+            try {
+                const r = await fetch(`${URL_API}/auth/v1/token?grant_type=password`, {
+                    method: 'POST',
+                    headers: { apikey: KEY, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: `${matricule}@csp-asso.local`, password: code }),
+                });
+                const d = await r.json();
+                if (!r.ok || !d.access_token) return montrerErreur('Matricule ou code incorrect.');
+                token = d.access_token;
+                saveToken(token);
+                $('code').value = '';
+                await afficher();
+            } catch (e) {
+                montrerErreur('Connexion impossible pour le moment. Réessaie.');
+            } finally {
+                $('btn-login').disabled = false;
+            }
+        }
+
+        function deconnexion() {
+            token = null; saveToken(null);
+            $('vue-notes').classList.add('hidden');
+            $('btn-logout').classList.add('hidden');
+            $('vue-login').classList.remove('hidden');
+        }
+
+        const get = async (path) => {
+            const r = await fetch(`${URL_API}/rest/v1/${path}`, { headers: headers() });
+            if (r.status === 401) throw new Error('session');
+            if (!r.ok) throw new Error('api');
+            return r.json();
+        };
+
+        async function afficher() {
+            try {
+                const [eleves, notes, bulletins] = await Promise.all([
+                    get('eleves?select=nom,prenom,classe,matricule'),
+                    get('notes?select=matiere,trimestre,annee_scolaire,note,coefficient&order=trimestre.asc,matiere.asc'),
+                    get('bulletins?select=trimestre,annee_scolaire,fichier_path,appreciation'),
+                ]);
+                const e = eleves[0];
+                if (!e) throw new Error('session');
+                $('nom-eleve').textContent = `${e.prenom} ${e.nom}`;
+                $('classe-eleve').textContent = `${e.classe} · Matricule ${e.matricule}`;
+
+                const parTrim = {};
+                notes.forEach((n) => (parTrim[n.trimestre] ||= []).push(n));
+                bulletins.forEach((b) => (parTrim[b.trimestre] ||= []));
+                const bulOf = Object.fromEntries(bulletins.map((b) => [b.trimestre, b]));
+
+                const cles = Object.keys(parTrim).sort();
+                $('trimestres').innerHTML = cles.length ? cles.map((t) => {
+                    const lignes = parTrim[t];
+                    const somme = lignes.reduce((s, n) => s + n.note * n.coefficient, 0);
+                    const coefs = lignes.reduce((s, n) => s + Number(n.coefficient), 0);
+                    const b = bulOf[t];
+                    return `
+                    <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                        <div class="bg-blue-900 text-white px-4 py-3 flex justify-between items-center">
+                            <h2 class="font-bold">Trimestre ${esc(t.replace(/^T/i, ''))}</h2>
+                            ${lignes.length ? `<span class="text-sm">Moyenne : <strong>${fmt(somme / coefs)}/20</strong></span>` : ''}
+                        </div>
+                        ${lignes.length ? `<table class="w-full text-sm">
+                            <thead class="bg-gray-100 text-gray-600"><tr><th class="text-left px-4 py-2">Matière</th><th class="px-2 py-2">Coef.</th><th class="text-right px-4 py-2">Note</th></tr></thead>
+                            <tbody>${lignes.map((n) => `<tr class="border-t"><td class="px-4 py-2">${esc(n.matiere)}</td><td class="px-2 py-2 text-center text-gray-500">${fmt(n.coefficient)}</td><td class="px-4 py-2 text-right font-semibold">${fmt(n.note)}/20</td></tr>`).join('')}</tbody>
+                        </table>` : '<p class="px-4 py-3 text-sm text-gray-500">Aucune note pour ce trimestre.</p>'}
+                        ${b ? `<div class="px-4 py-3 border-t bg-gray-50 flex flex-wrap items-center justify-between gap-2">
+                            <span class="text-sm text-gray-600">${esc(b.appreciation || '')}</span>
+                            <button data-path="${esc(b.fichier_path)}" class="btn-bulletin bg-yellow-500 hover:bg-yellow-400 text-blue-950 font-semibold text-sm px-3 py-1.5 rounded-lg"><i class="fa-solid fa-file-pdf mr-1"></i>Télécharger le bulletin</button>
+                        </div>` : ''}
+                    </div>`;
+                }).join('') : '<p class="text-center text-gray-500">Aucune note ni bulletin disponible pour le moment.</p>';
+
+                $('vue-login').classList.add('hidden');
+                $('vue-notes').classList.remove('hidden');
+                $('btn-logout').classList.remove('hidden');
+            } catch (err) {
+                deconnexion();
+                if (err.message !== 'session') montrerErreur('Impossible de charger tes données. Réessaie.');
+            }
+        }
+
+        async function telecharger(path, bouton) {
+            bouton.disabled = true;
+            try {
+                const r = await fetch(`${URL_API}/storage/v1/object/sign/bulletins/${path}`, {
+                    method: 'POST',
+                    headers: { ...headers(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ expiresIn: 120 }), // lien valable 2 minutes
+                });
+                const d = await r.json();
+                if (!r.ok || !d.signedURL) throw new Error();
+                window.open(`${URL_API}/storage/v1${d.signedURL}`, '_blank');
+            } catch (e) {
+                alert('Bulletin indisponible pour le moment.');
+            } finally {
+                bouton.disabled = false;
+            }
+        }
+
+        $('btn-login').addEventListener('click', connexion);
+        $('code').addEventListener('keydown', (e) => e.key === 'Enter' && connexion());
+        $('btn-logout').addEventListener('click', deconnexion);
+        $('trimestres').addEventListener('click', (e) => {
+            const b = e.target.closest('.btn-bulletin');
+            if (b) telecharger(b.dataset.path, b);
+        });
+
+        token = loadToken();
+        if (token) afficher();
+    </script>
+</body>
+</html>
