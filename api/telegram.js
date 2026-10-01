@@ -54,8 +54,12 @@ function genCode(len = 8) {
 
 function readSheet(buffer) {
   const wb = XLSX.read(buffer, { type: 'buffer' });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  // lit toutes les feuilles (une par classe, par exemple), sauf « Instructions »
+  const rows = [];
+  for (const name of wb.SheetNames) {
+    if (norm(name) === 'instructions') continue;
+    rows.push(...XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' }));
+  }
   // normalise les noms de colonnes
   return rows.map((r) => {
     const o = {};
@@ -112,7 +116,7 @@ async function cmdImportEleves(chatId, doc) {
     const nom = String(r['nom'] ?? '').trim();
     const prenom = String(r['prenom'] ?? '').trim();
     const classe = String(r['classe'] ?? '').trim();
-    if (!matricule && !nom && !prenom && !classe) return; // ligne vide
+    if (!nom && !prenom) return; // ligne vide ou matricule pré-rempli sans élève
     if (matricule.startsWith('EXEMPLE')) return;
     if (!matricule || !nom || !prenom || !classe) return errors.push(`Ligne ${line} : champ manquant`);
     if (seen.has(matricule)) return errors.push(`Ligne ${line} : matricule ${matricule} en double dans le fichier`);
