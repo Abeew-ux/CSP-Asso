@@ -164,11 +164,36 @@ async function cmdEleve(chatId, args) {
 async function cmdReset(chatId, args) {
   const matricule = cleanMatricule(args);
   const el = matricule && (await eleveByMatricule(matricule));
-  if (!el) return send(chatId, 'Matricule introuvable. Format : /reset matricule');
+  if (el) {
+    const code = genCode();
+    const { error } = await db.auth.admin.updateUserById(el.id, { password: code });
+    if (error) return send(chatId, `Échec : ${error.message}`);
+    return send(chatId, `Nouveau code pour ${el.prenom} ${el.nom} (${matricule}) : ${code}`);
+  }
+  // sinon : un membre du personnel (identifiant)
+  const ident = norm(args).replace(/[^a-z0-9]/g, '');
+  const { data: pers } = ident ? await db.from('personnel').select('id, nom, identifiant').eq('identifiant', ident).maybeSingle() : { data: null };
+  if (!pers) return send(chatId, 'Matricule ou identifiant introuvable. Format : /reset matricule');
   const code = genCode();
-  const { error } = await db.auth.admin.updateUserById(el.id, { password: code });
-  if (error) return send(chatId, `Échec : ${error.message}`);
-  await send(chatId, `Nouveau code pour ${el.prenom} ${el.nom} (${matricule}) : ${code}`);
+  const { error } = await db.auth.admin.updateUserById(pers.id, { password: code });
+  await send(chatId, error ? `Échec : ${error.message}` : `Nouveau code pour ${pers.nom} (${pers.identifiant}) : ${code}`);
+}
+
+// ---------- personnel (enseignants, secrétariat) pour CSP/ASSO Office ----------
+async function cmdPersonnel(chatId, args) {
+  const [nom, roleRaw] = args.split('|').map((s) => s.trim());
+  const role = norm(roleRaw || 'prof');
+  const identifiant = norm(nom).replace(/[^a-z0-9]/g, '');
+  if (!nom || !identifiant || !['admin', 'prof'].includes(role)) return send(chatId, 'Format : /personnel Nom | admin ou prof\nExemple : /personnel Abdou Moussa | prof');
+  const code = genCode();
+  const { data, error } = await db.auth.admin.createUser({ email: emailOf(identifiant), password: code, email_confirm: true });
+  if (error) return send(chatId, `Échec : ${/already|exist|registered/i.test(error.message) ? 'cet identifiant existe déjà (essaie un autre nom)' : error.message}`);
+  const { error: e2 } = await db.from('personnel').insert({ id: data.user.id, identifiant, nom, role });
+  if (e2) {
+    await db.auth.admin.deleteUser(data.user.id);
+    return send(chatId, `Échec : ${e2.message}`);
+  }
+  await send(chatId, `Compte créé : ${nom} (${role})\nIdentifiant : ${identifiant}\nCode : ${code}\nÀ utiliser pour se connecter à CSP/ASSO Office.`);
 }
 
 // ---------- notes ----------
@@ -319,7 +344,8 @@ const HELP = `Commandes :
 /import_eleves : envoyer un fichier Excel/CSV dont le nom contient « eleves » (import automatique), ou répondre au fichier avec /import_eleves
 /import_notes T1 : fichier de notes dont le nom contient « notes » et T1 (ex. notes_T1.xlsx), ou répondre au fichier avec /import_notes T1
 /note matricule | matière | trimestre | note
-/reset matricule : nouveau code de connexion
+/reset matricule (ou identifiant) : nouveau code de connexion
+/personnel Nom | admin ou prof : créer un compte pour CSP/ASSO Office
 Bulletins : envoie les PDF nommés MATRICULE_T1.pdf`;
 
 // ---------- routeur ----------
@@ -362,6 +388,7 @@ export default async function handler(req, res) {
     else if (cmd === '/inscriptions') await cmdInscriptions(chatId);
     else if (cmd === '/eleve') await cmdEleve(chatId, args);
     else if (cmd === '/reset') await cmdReset(chatId, args);
+    else if (cmd === '/personnel') await cmdPersonnel(chatId, args);
     else if (cmd === '/note') await cmdNote(chatId, args);
     else await send(chatId, 'Commande inconnue. Envoie /aide.');
   } catch (e) {
@@ -369,5 +396,5 @@ export default async function handler(req, res) {
     await send(chatId, `Erreur : ${e.message}`);
   }
   res.status(200).send('ok');
-                                       }
-                   
+          }
+  
